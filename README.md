@@ -1,79 +1,78 @@
-===============================
-Escáner de Seguridad Docker con LLM
-===============================
+# Escáner de Seguridad Docker con LLM
 
-Esta aplicación gráfica (Tkinter) permite:
+### Esta aplicación gráfica (Tkinter) permite:
 
- Cargar imágenes Docker (.tar.gz)
- Escanearlas con Trivy
- Resumir las vulnerabilidades (CVEs)
-Consultar recomendaciones mediante OpenAI GPT-3.5 Turbo
+1. Cargar imágenes Docker (.tar.gz)
+2. Escanearlas con Trivy
+3. Resumir las vulnerabilidades (CVEs)
+4. Consultar recomendaciones mediante OpenAI modelo `gpt-4o-mini`
 
--------------------------------
-Requisitos previos
--------------------------------
-- Python 3.8 o superior
+
+## Requisitos previos
+- Python 3.9 o superior
 - Docker instalado y en funcionamiento
 - Trivy instalado (https://aquasecurity.github.io/trivy/)
 - Una clave de API válida de OpenAI (https://platform.openai.com/account/api-keys)
+- Tener Tkinter instalado en tu sistema operativo
 
--------------------------------
- Crear entorno virtual
--------------------------------
 
- En Linux/macOS:
-python3 -m venv venv
-source venv/bin/activate
+## Crear entorno virtual
+
+En Linux/macOS:
+```bash
+pipenv shell
+```
 
 En Windows (CMD o PowerShell):
-python -m venv venv
-venv\Scripts\activate
+```powershell
+pipenv shell
+```
 
--------------------------------
-Instalar dependencias
--------------------------------
+## Instalar dependencias
+
 Asegúrate de estar dentro del entorno virtual y ejecuta:
 
-pip install openai
+`pipenv install -r requirements.txt`
 
--------------------------------
- Configurar la API de OpenAI
--------------------------------
+
+### Configurar la API de OpenAI
 La aplicación usa la variable de entorno `OPENAI_API_KEY`.
 
  En Linux/macOS:
+```bash
 export OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxxxxxx"
+```
 
- En Windows CMD:
+En Windows CMD:
+ ```powershell
 set OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxx
+```
 
  En PowerShell:
+ ```powershell
 $env:OPENAI_API_KEY="sk-xxxxxxxxxxxxxxxxxxxx"
+```
 
  ¡No olvides reemplazar `sk-xxxxxxxx...` con tu propia API Key!
 
--------------------------------
- Ejecutar la aplicación
--------------------------------
+## Ejecutar la aplicación
 
 Desde el mismo terminal (con entorno activado y clave API configurada), ejecuta:
 
+```bash
 python main.py
+```
 
--------------------------------
 Estructura esperada
--------------------------------
 
 El proyecto debe tener al menos estos archivos:
 
 - `main.py` → interfaz gráfica
 - `llm_analyzer.py` → lógica del resumen y llamada al modelo
 - `/output/result.json` → generado automáticamente por Trivy
-- `README.txt` → este documento
+- `README.md` → este documento
 
--------------------------------
-Flujo de uso
--------------------------------
+### Flujo de uso
 
 1. Selecciona una imagen Docker `.tar.gz`.
 2. Carga la imagen en Docker.
@@ -82,15 +81,12 @@ Flujo de uso
 5. Se muestra un resumen de vulnerabilidades (no el JSON).
 6. Haz clic en "Analizar con LLM" para obtener recomendaciones.
 
--------------------------------
- Notas útiles
--------------------------------
+### Notas útiles
 
-- El modelo utilizado es `gpt-3.5-turbo`, que es económico y eficiente.
+- El modelo utilizado es `gpt-4o-mini`, que es económico y eficiente.
 - Si tienes problemas con Trivy, asegúrate de que esté en tu PATH (`trivy -v`).
 - El campo de nombre de imagen no es editable manualmente: se rellena automáticamente al cargar la imagen.
 
--------------------------------
- Autor
--------------------------------
+
+## Autor
 Juan Diego López – Proyecto personal para análisis de seguridad en imágenes Docker usando IA.
