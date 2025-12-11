@@ -10,6 +10,7 @@ from openai import OpenAI, RateLimitError, APIConnectionError, APIStatusError
 MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 MAX_ITEMS = int(os.getenv("TRIVY_MAX_ITEMS", "50"))     # CVEs máximos al prompt
 STREAM = os.getenv("LLM_STREAM", "false").lower() == "true"
+# MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "900"))
 OPENAI_API_KEY = os.getenv("OPENAPI_API_KEY", "")
 
 # Severidades ordenadas
@@ -21,6 +22,19 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 # ======================
 # Datos / helpers
 # ======================
+
+def _read_env(env_key: str | None = None) -> Optional[int]:
+    raw = os.getenv(env_key)
+    if not raw or not raw.strip():
+        return None  # desactivado
+    try:
+        val = int(raw.strip())
+        return val if val > 0 else None  # 0 o negativo => desactivado
+    except ValueError:
+        return None
+
+MAX_TOKENS: Optional[int] = _read_env("LLM_MAX_TOKENS")
+
 @dataclass(frozen=True)
 class CVEItem:
     id: str
@@ -95,55 +109,77 @@ def resumir_cves(trivy_result_path: str, max_items: int = MAX_ITEMS) -> Tuple[st
 # ======================
 def _build_messages(resumen_lines: str, metrics: Dict[str, int], language: str = "es") -> List[Dict[str, str]]:
     sys = (
-        "Eres un analista de seguridad de contenedores. "
-        "Responde en español, claro y accionable. "
-        "No inventes CVEs; si faltan datos, dilo."
+        "Eres un analista senior de seguridad de contenedores y supply-chain. "
+        "Respondes en ESPAÑOL, de forma clara, accionable y sin alucinar. "
+        "No inventes CVEs, versiones ni ‘fix versions’. Si un dato falta, escribe 'DESCONOCIDO'. "
+        "Tu razonamiento debe ser interno; SOLO devuelve el informe final solicitado."
     )
-    user = (
-        "Analiza esta lista resumida de vulnerabilidades de una imagen Docker.\n"
-        "Devuélveme un informe breve con este formato:\n"
-        "1) Resumen (1-2 párrafos)\n"
-        "2) Top hallazgos (tabla: CVE | Paquete | Severidad | Acción sugerida)\n"
-        "3) Plan de mitigación por prioridad (pasos concretos)\n"
-        "4) Riesgos residuales y próximos pasos\n\n"
-        f"Métricas: {json.dumps(metrics, ensure_ascii=False)}\n"
-        f"CVEs:\n{resumen_lines}"
-    )
+
+    user = f"""
+            Analiza la siguiente imagen Docker y sus vulnerabilidades resumidas. Genera un informe breve, priorizado y accionable.
+
+            ## Contexto
+
+            ## Datos de entrada
+            - Métricas agregadas: {json.dumps(metrics, ensure_ascii=False)}
+            - CVEs (deduplicados):
+            {resumen_lines}
+
+            ## Instrucciones de salida (formato estricto)
+            Entregá 1 sección: primero un informe en Markdown con el plan de acción.
+
+            ### 1) Informe
+            1. **Resumen ejecutivo.** Qué tan expuesta está la imagen y por qué.
+            2. **Top hallazgos (tabla)** con columnas EXACTAS:
+            CVE | Paquete | Severidad | Versión instalada | Versión fija | Explotabilidad (baja/media/alta) | Impacto en contenedor (build/runtime) | Acción sugerida
+            - Si no hay versión fija, pon 'NO-FIX' y sugiere mitigación.
+            3. **Plan de mitigación priorizado** (P0/P1/P2/P3) con horizontes: P0=48h, P1=7d, P2=30d, P3=backlog.
+            - Prioriza por: severidad, explotabilidad, exposición (runtime vs build), disponibilidad de fix y facilidad de cambio de base image.
+            4. **Hardening**: mínimos privilegios, usuario no-root, fs read-only, drop capabilities, pin de versiones, reducir superficie (multi-stage), escaneo en CI.
+            5. **Riesgos residuales y próximos pasos**: qué queda pendiente y cómo monitorearlo.
+
+            **Reglas extra:**
+            - Si varias CVEs afectan al mismo paquete, agrupa la recomendación (evita repetir acciones idénticas).
+            - Si la mayoría de findings son de sistema base, sugiere mover a una base ‘-slim’ o distroless equivalente.
+            - Si no hay datos suficientes, dilo explícitamente (no inventes).
+
+            Devuélvelo como ÚLTIMA línea, sin texto luego.
+
+            ¡Importante! No incluyas comentarios ni múltiples objetos.
+            """
     return [
         {"role": "system", "content": sys},
         {"role": "user", "content": user},
     ]
 
-def consultar_llm(resumen_lines: str, metrics: Dict[str, int], timeout: float = 30.0) -> str:
+def consultar_llm(resumen_lines: str, metrics: Dict[str, int], meta: dict | None = None, timeout: float = 30.0) -> str:
     """
     Llama al modelo con reintentos suaves en caso de rate limit / fallos transitorios.
     """
-    messages = _build_messages(resumen_lines, metrics)
+    messages = _build_messages(resumen_lines, metrics, meta)
     backoff = 2.0
+
+    kwargs = {
+        "model": MODEL_NAME,
+        "messages": messages,
+        "temperature": 0.4,
+        "timeout": timeout
+        }
+
+    if MAX_TOKENS is not None:
+        kwargs["max_tokens"] = MAX_TOKENS
+
     for attempt in range(3):
         try:
             if STREAM:
                 chunks = []
-                with client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=messages,
-                    temperature=0.3,
-                    max_tokens=900,
-                    stream=True,
-                    timeout=timeout,
-                ) as stream:
+                with client.chat.completions.create(**kwargs) as stream:
                     for ev in stream:
                         delta = ev.choices[0].delta.content or ""
                         chunks.append(delta)
                 return "".join(chunks).strip()
             else:
-                resp = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=messages,
-                    temperature=0.3,
-                    max_tokens=900,
-                    timeout=timeout,
-                )
+                resp = client.chat.completions.create(**kwargs)
                 return (resp.choices[0].message.content or "").strip()
         except (RateLimitError, APIConnectionError, APIStatusError) as e:
             # backoff sencillo
@@ -154,6 +190,39 @@ def consultar_llm(resumen_lines: str, metrics: Dict[str, int], timeout: float = 
         except Exception as e:
             return f"Error al consultar el modelo: {e}"
     return "Error desconocido al consultar el modelo."
+
+def consultar_llm_stream(resumen_lines: str, metrics: Dict[str, int], on_delta: Callable[[str], None], timeout: float = 30.0) -> None:
+    """
+    Streaming token-a-token: llama on_delta(text) cada vez que llega un fragmento.
+    """
+
+    messages = _build_messages(resumen_lines, metrics)
+
+    kwargs = {
+    "model": MODEL_NAME,
+    "messages": messages,
+    "temperature": 0.3,
+    "stream": True,
+    "timeout": timeout
+    }
+
+    if MAX_TOKENS is not None:
+        kwargs["max_tokens"] = MAX_TOKENS
+    with client.chat.completions.create(**kwargs) as stream:
+        for ev in stream:
+            delta = ev.choices[0].delta.content or ""
+            if delta:
+                on_delta(delta)
+
+
+def stream_to_stdout(summary: str, metrics: Dict[str, int]) -> None:
+    """
+    Versión streaming para CLI: imprime tokens inmediatamente.
+    """
+    def _emit(s: str):
+        print(s, end="", flush=True)
+    consultar_llm_stream(summary, metrics, _emit)
+    print()  # salto de línea final
 
 # ======================
 # Worker en hilo

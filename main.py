@@ -1,11 +1,12 @@
 # main.py
 import os
-import json
 import subprocess
 import tkinter as tk
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 from tkinter.scrolledtext import ScrolledText
+
+from llm_analyzer import resumir_cves, analizar_con_llm  # <- nuevos métodos
 
 # --- Tema del sistema (opcionalmente usar darkdetect) ---
 def apply_system_theme(root: tk.Tk) -> None:
@@ -29,9 +30,6 @@ def apply_system_theme(root: tk.Tk) -> None:
         style.configure("TLabel", background="#1e1e1e", foreground="#eaeaea")
         style.configure("TButton", background="#2b2b2b", foreground="#ffffff")
         style.map("TButton", background=[("active", "#3a3a3a")])
-
-# --- Lógica LLM/Trivy ---
-from llm_analyzer import resumir_cves, analizar_con_llm  # <- nuevos métodos
 
 OUTPUT_DIR = "output"
 TRIVY_JSON = os.path.join(OUTPUT_DIR, "result.json")
@@ -102,10 +100,10 @@ class App:
             return
         try:
             res = subprocess.run(["docker", "load", "-i", ruta], text=True, capture_output=True, check=True)
-            nombre = self._extraer_nombre_imagen(res.stdout)
-            if nombre:
-                self.var_imagen.set(nombre)
-                messagebox.showinfo("Éxito", f"Imagen cargada: {nombre}")
+            nameImage = self._extraer_nombre_imagen(res.stdout)
+            if nameImage:
+                self.var_imagen.set(nameImage)
+                messagebox.showinfo("Éxito", f"Imagen cargada: {nameImage}")
             else:
                 messagebox.showwarning("Atención", "Se cargó la imagen, pero no se detectó el nombre.")
         except subprocess.CalledProcessError as e:
@@ -114,18 +112,18 @@ class App:
             messagebox.showerror("Error inesperado", str(e))
 
     def escanear_imagen(self):
-        imagen = self.var_imagen.get().strip()
-        if not imagen:
+        image = self.var_imagen.get().strip()
+        if not image:
             messagebox.showerror("Error", "Primero carga la imagen en Docker.")
             return
         try:
             os.makedirs(OUTPUT_DIR, exist_ok=True)
             # Trivy a JSON
-            cmd = ["trivy", "image", imagen, "--format", "json", "--output", TRIVY_JSON]
+            cmd = ["trivy", "image", image, "--format", "json", "--output", TRIVY_JSON]
             subprocess.run(cmd, check=True)
             # Mostrar resumen (usa el nuevo resumir_cves -> (texto, métricas))
-            resumen, metrics = resumir_cves(TRIVY_JSON)
-            self._set_text(self.txt_resumen, self._resumen_con_metricas(resumen, metrics))
+            summary, metrics = resumir_cves(TRIVY_JSON)
+            self._set_text(self.txt_resumen, self._resumen_con_metricas(summary, metrics))
             messagebox.showinfo("Escaneo completo", "Trivy terminó. Se cargó el resumen arriba.")
         except subprocess.CalledProcessError as e:
             messagebox.showerror("Trivy error", e.stderr or e.stdout or str(e))
