@@ -1,2 +1,14 @@
 /imagenes
 /output
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+.env
+.env.*
+.vscode/
+.idea/
+.DS_Store
+logs/
+*.log
