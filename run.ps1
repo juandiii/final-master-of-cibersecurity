@@ -147,40 +147,54 @@ if (-not (Test-Path $venvPython)) {
   $PY = (Resolve-Path $venvPython).Path
 }
 
-function Use-CopyLlm {
+function Use-CopyFolder {
   [CmdletBinding()]
   param(
-    [string]$Source = (Join-Path $PSScriptRoot 'llm_analyzer.py')
+    [Parameter(Mandatory)]
+    [string]$SourceDir,
+
+    # (Opcional) patrón(es) a incluir, p.ej. '*.py','*.json'
+    [string[]]$Include = @('*'),
+
+    # (Opcional) excluir nombres/carpetas (comodines admitidos)
+    [string[]]$Exclude = @(),
+
+    [switch]$Recurse = $true
   )
 
-  if (-not (Test-Path $Source)) {
-    throw "No se encontró el archivo: $Source"
+  if (-not (Test-Path $SourceDir -PathType Container)) {
+    throw "No existe la carpeta: $SourceDir"
   }
 
-  $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("llm_" + [Guid]::NewGuid().ToString('N'))
+  $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("llm" + [Guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
-  $dest = Join-Path $tempDir (Split-Path -Leaf $Source)
-  Copy-Item -Path $Source -Destination $dest -Force
+  # Copia todo el árbol (respeta Include/Exclude).
+  # Nota: Copy-Item copia archivos ocultos; si quieres excluirlos, filtra con Get-ChildItem.
+  foreach ($pattern in $Include) {
+    Copy-Item `
+      -Path (Join-Path $SourceDir $pattern) `
+      -Destination $tempDir `
+      -Recurse:$Recurse `
+      -Force `
+      -Exclude $Exclude `
+      -Container
+  }
 
-  [pscustomobject]@{
-    Path    = $dest
+  return [pscustomobject]@{
     TempDir = $tempDir
-    Cleanup = { param($dir) if (Test-Path $dir) { Remove-Item -Recurse -Force $dir } }.GetNewClosure()
   }
 }
 
 # helper para ejecutar bloques python desde PS (escribe temp .py)
 function Invoke-PythonBlock([string]$Code){
-
-  $Source = Use-CopyLlm
+  $Source = Use-CopyFolder -SourceDir "$PSScriptRoot"
   $tmpFile = Join-Path $Source.TempDir (("block_" + [Guid]::NewGuid().ToString('N')) + ".py")
   Set-Content -LiteralPath $tmpFile -Value $Code -Encoding UTF8
   try {
-    & $PY $tmp
+    & $PY $tmpFile
   } finally {
-    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
-    $Source.Cleanup $Source.TempDir
+    Remove-Item -Recurse -Force $Source.TempDir -ErrorAction SilentlyContinue
   }
 }
 
