@@ -62,19 +62,16 @@ if ($MyInvocation.MyCommand.Path) {
 }
 
 # ---------- .env loader ----------
-function Load-DotEnv([string]$path = ".env"){
+function Load-DotEnv([string]$path=".env"){
   if (-not (Test-Path $path)) { return }
-  Write-Info "Cargando variables de entorno desde $path"
+  Write-Info "Cargando variables desde $path"
   Get-Content -LiteralPath $path | ForEach-Object {
     $line = $_.Trim()
-    if (-not $line -or $line.StartsWith('#')) { return }
-    $idx = $line.IndexOf('=')
-    if ($idx -lt 1) { return }
-    $k = $line.Substring(0,$idx).Trim()
-    $v = $line.Substring($idx+1).Trim().Trim("'`"`"")
-    # expand ~ and basic unescape
-    $v = $v -replace '\\n',[environment]::NewLine
-    $env:$k = $v
+    if ($line -eq "" -or $line.StartsWith("#")) { return }
+    $i = $line.IndexOf("="); if ($i -lt 0) { return }
+    $k = $line.Substring(0,$i).Trim()
+    $v = $line.Substring($i+1).Trim().Trim("'`"").Replace("`"",'"')
+    if ($k) { if (-not $env:$k) { $env:$k = $v } }
   }
 }
 Load-DotEnv

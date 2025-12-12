@@ -18,7 +18,6 @@ Write-Host "[INFO] Sistema: Windows"
 
 if (-not (Have "python") -and -not (Have "py")) {
     Write-Warning "Instala Python desde https://www.python.org/downloads/windows/ (incluye Tk)."
-  }
 }
 
 $PY = $(if (Have "py") { "py" } elseif (Have "python") { "python" } else { "" })
