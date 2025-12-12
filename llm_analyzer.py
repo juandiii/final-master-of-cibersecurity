@@ -11,7 +11,7 @@ MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 MAX_ITEMS = int(os.getenv("TRIVY_MAX_ITEMS", "50"))     # CVEs máximos al prompt
 STREAM = os.getenv("LLM_STREAM", "false").lower() == "true"
 # MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "900"))
-OPENAI_API_KEY = os.getenv("OPENAPI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 # Severidades ordenadas
 SEV_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0}
