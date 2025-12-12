@@ -4,13 +4,19 @@ $ErrorActionPreference = "Stop"
 
 function Have($cmd) { return (Get-Command $cmd -ErrorAction SilentlyContinue) -ne $null }
 
+function Invoke-PythonBlock([string]$Code){
+  $tmp = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), ".py")
+  Set-Content -LiteralPath $tmp -Value $Code -Encoding UTF8
+  try {
+    & $PY $tmp
+  } finally {
+    Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+  }
+}
+
 Write-Host "[INFO] Sistema: Windows"
 
 if (-not (Have "python") -and -not (Have "py")) {
-  if (Have "winget") {
-    Write-Host "[INFO] Instalando Python con winget…"
-    winget install -e --id Python.Python.3.12 --source winget --silent
-  } else {
     Write-Warning "Instala Python desde https://www.python.org/downloads/windows/ (incluye Tk)."
   }
 }
@@ -38,21 +44,18 @@ if (Test-Path ".\requirements.txt") {
 }
 
 Write-Host "[INFO] Verificando tkinter…"
-python - << 'PY'
+Write-Host "Verificando tkinter…"
+  Invoke-PythonBlock @"
+import sys
 try:
     import tkinter as tk
-    import sys
-    r = tk.Tk()
-    r.withdraw()
-    print(f"OK tkinter v{tk.TkVersion} (Python {sys.version.split()[0]})")
-    r.destroy()
+    r = tk.Tk(); r.withdraw(); r.destroy()
 except Exception as e:
-    print("FALLO tkinter:", e)
-    raise SystemExit(1)
-PY
+    raise SystemExit(f"tkinter no disponible: {e}")
+"@
 
 Write-Host ""
-Write-Host "Listo ✅"
+Write-Host "Listo para usar."
 Write-Host "Siguientes pasos:"
 Write-Host "  1) Define la API key de OpenAI:"
 Write-Host '     $Env:OPENAI_API_KEY = "sk-xxxx"'
