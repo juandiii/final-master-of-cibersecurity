@@ -147,14 +147,40 @@ if (-not (Test-Path $venvPython)) {
   $PY = (Resolve-Path $venvPython).Path
 }
 
+function Use-CopyLlm {
+  [CmdletBinding()]
+  param(
+    [string]$Source = (Join-Path $PSScriptRoot 'llm_analyzer.py')
+  )
+
+  if (-not (Test-Path $Source)) {
+    throw "No se encontró el archivo: $Source"
+  }
+
+  $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("llm_" + [Guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+  $dest = Join-Path $tempDir (Split-Path -Leaf $Source)
+  Copy-Item -Path $Source -Destination $dest -Force
+
+  [pscustomobject]@{
+    Path    = $dest
+    TempDir = $tempDir
+    Cleanup = { param($dir) if (Test-Path $dir) { Remove-Item -Recurse -Force $dir } }.GetNewClosure()
+  }
+}
+
 # helper para ejecutar bloques python desde PS (escribe temp .py)
 function Invoke-PythonBlock([string]$Code){
-  $tmp = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), ".py")
-  Set-Content -LiteralPath $tmp -Value $Code -Encoding UTF8
+
+  $Source = Use-CopyLlm
+  $tmpFile = Join-Path $Source.TempDir (("block_" + [Guid]::NewGuid().ToString('N')) + ".py")
+  Set-Content -LiteralPath $tmpFile -Value $Code -Encoding UTF8
   try {
     & $PY $tmp
   } finally {
     Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+    $Source.Cleanup $Source.TempDir
   }
 }
 
