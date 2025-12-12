@@ -188,7 +188,7 @@ function Invoke-PythonBlock([string]$Code){
   try {
     & $PY $tmpFile
   } finally {
-    Remove-Item -Recurse -Force $Source.TempDir -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $Source.TempDir -ProgressAction SilentlyContinue -ErrorAction SilentlyContinue
   }
 }
 
