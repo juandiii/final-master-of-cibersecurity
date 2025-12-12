@@ -63,32 +63,52 @@ if ($MyInvocation.MyCommand.Path) {
 
 # ---------- .env loader ----------
 function Load-DotEnv {
+  [CmdletBinding()]
   param(
     [string]$Path = ".env",
-    [switch]$Force  # si lo pasas, sobrescribe las existentes
+    [switch]$Force,     # sobrescribe si ya existe
+    [switch]$Expand     # expande ${VAR} con variables ya en Env:
   )
-  if (-not (Test-Path -LiteralPath $Path)) { return }
 
-  Write-Info "Cargando variables desde $Path"
-  foreach ($line in Get-Content -LiteralPath $Path) {
-    $line = $line.Trim()
+  if (-not (Test-Path -LiteralPath $Path)) {
+    throw "No existe el archivo: $Path"
+  }
+
+  foreach ($raw in Get-Content -LiteralPath $Path) {
+    $line = $raw.Trim()
     if (-not $line -or $line.StartsWith('#')) { continue }
     if ($line.StartsWith('export ')) { $line = $line.Substring(7).Trim() }
 
-    $i = $line.IndexOf('=')
-    if ($i -lt 0) { continue }
+    $eq = $line.IndexOf('=')
+    if ($eq -lt 1) { continue }
 
-    $k = $line.Substring(0, $i).Trim()
-    $v = $line.Substring($i + 1).Trim().Trim("'`"")  # quita comillas simples o dobles
+    $key = $line.Substring(0, $eq).Trim()
+    if (-not $key) { continue }
 
-    if (-not $k) { continue }
+    $val = $line.Substring($eq + 1).Trim()
 
-    # Lee la existente (si hay) de forma segura
-    $existing = (Get-Item -Path "Env:$k" -ErrorAction SilentlyContinue)?.Value
+    # Quitar comillas y soportar escapes básicos en comillas dobles
+    if ($val.StartsWith("'") -and $val.EndsWith("'")) {
+      $val = $val.Substring(1, $val.Length - 2)
+    } elseif ($val.StartsWith('"') -and $val.EndsWith('"')) {
+      $val = $val.Substring(1, $val.Length - 2).Replace('\"','"')
+      $val = $val.Replace('\n',"`n").Replace('\r',"`r").Replace('\t',"`t")
+    } else {
+      # Comentario inline: KEY=VAL # comentario
+      $hashIx = $val.IndexOf(' #')
+      if ($hashIx -gt -1) { $val = $val.Substring(0, $hashIx).TrimEnd() }
+    }
 
-    if ($Force -or [string]::IsNullOrEmpty($existing)) {
-      # Set-Item funciona con nombres dinámicos
-      Set-Item -Path "Env:$k" -Value $v
+    if ($Expand) {
+      $val = [regex]::Replace($val, '\$\{([A-Za-z_][A-Za-z0-9_]*)\}', {
+        param($m)
+        (Get-Item -Path ("Env:" + $m.Groups[1].Value) -ErrorAction SilentlyContinue).Value ?? ''
+      })
+    }
+
+    $exists = Test-Path ("Env:$key")
+    if ($Force -or -not $exists) {
+      Set-Item -Path ("Env:$key") -Value $val
     }
   }
 }
@@ -100,7 +120,7 @@ if ([string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY) -and -not [string]::IsNull
 }
 
 # ---------- Python / venv ----------
-$IsWin = $PSStyle -ne $null -and $env:OS -match 'Windows' -or $IsWindows
+$IsWin = $null -ne $PSStyle -and $env:OS -match 'Windows' -or $IsWindows
 $venvPython = if ($IsWin) { ".\.venv\Scripts\python.exe" } else { "./.venv/bin/python" }
 
 function Resolve-Python {
