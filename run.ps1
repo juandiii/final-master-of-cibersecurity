@@ -172,13 +172,7 @@ function Use-CopyFolder {
   # Copia todo el árbol (respeta Include/Exclude).
   # Nota: Copy-Item copia archivos ocultos; si quieres excluirlos, filtra con Get-ChildItem.
   foreach ($pattern in $Include) {
-    Copy-Item `
-      -Path (Join-Path $SourceDir $pattern) `
-      -Destination $tempDir `
-      -Recurse:$Recurse `
-      -Force `
-      -Exclude $Exclude `
-      -Container
+    Copy-Item -Path (Join-Path $SourceDir $pattern) -Destination $tempDir -Recurse:$Recurse -ProgressAction SilentlyContinue -Force -Exclude $Exclude -Container
   }
 
   return [pscustomobject]@{
@@ -188,7 +182,7 @@ function Use-CopyFolder {
 
 # helper para ejecutar bloques python desde PS (escribe temp .py)
 function Invoke-PythonBlock([string]$Code){
-  $Source = Use-CopyFolder -SourceDir "$PSScriptRoot"
+  $Source = Use-CopyFolder -SourceDir "$PSScriptRoot" -Exclude '__pycache__', '.venv', 'output', '*.sh', '*.ps1','*.md'
   $tmpFile = Join-Path $Source.TempDir (("block_" + [Guid]::NewGuid().ToString('N')) + ".py")
   Set-Content -LiteralPath $tmpFile -Value $Code -Encoding UTF8
   try {
