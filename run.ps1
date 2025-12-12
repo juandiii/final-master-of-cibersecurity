@@ -62,16 +62,34 @@ if ($MyInvocation.MyCommand.Path) {
 }
 
 # ---------- .env loader ----------
-function Load-DotEnv([string]$path=".env"){
-  if (-not (Test-Path $path)) { return }
-  Write-Info "Cargando variables desde $path"
-  Get-Content -LiteralPath $path | ForEach-Object {
-    $line = $_.Trim()
-    if ($line -eq "" -or $line.StartsWith("#")) { return }
-    $i = $line.IndexOf("="); if ($i -lt 0) { return }
-    $k = $line.Substring(0,$i).Trim()
-    $v = $line.Substring($i+1).Trim().Trim("'`"").Replace("`"",'"')
-    if ($k) { if (-not $env:$k) { $env:$k = $v } }
+function Load-DotEnv {
+  param(
+    [string]$Path = ".env",
+    [switch]$Force  # si lo pasas, sobrescribe las existentes
+  )
+  if (-not (Test-Path -LiteralPath $Path)) { return }
+
+  Write-Info "Cargando variables desde $Path"
+  foreach ($line in Get-Content -LiteralPath $Path) {
+    $line = $line.Trim()
+    if (-not $line -or $line.StartsWith('#')) { continue }
+    if ($line.StartsWith('export ')) { $line = $line.Substring(7).Trim() }
+
+    $i = $line.IndexOf('=')
+    if ($i -lt 0) { continue }
+
+    $k = $line.Substring(0, $i).Trim()
+    $v = $line.Substring($i + 1).Trim().Trim("'`"")  # quita comillas simples o dobles
+
+    if (-not $k) { continue }
+
+    # Lee la existente (si hay) de forma segura
+    $existing = (Get-Item -Path "Env:$k" -ErrorAction SilentlyContinue)?.Value
+
+    if ($Force -or [string]::IsNullOrEmpty($existing)) {
+      # Set-Item funciona con nombres dinámicos
+      Set-Item -Path "Env:$k" -Value $v
+    }
   }
 }
 Load-DotEnv
