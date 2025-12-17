@@ -13,7 +13,7 @@ cd "$DIR"
 SKIP_TK_CHECK="false"
 SKIP_DOCKER_CHECK="false"
 WITH_TRIVY_CHECK="false"
-RUN_UI="auto"            # auto => si no hay tareas headless, abre GUI
+RUN_UI="auto"
 IMAGE_TAR=""
 IMAGE_NAME=""
 DO_SCAN="false"
@@ -182,11 +182,12 @@ if [[ "$DO_LLM" == "true" ]]; then
     err "--llm requiere el archivo JSON (usa --scan antes) en: $OUT_JSON"
     exit 1
   fi
-  if [[ -z "${OPENAPI_API_KEY:-}" ]]; then
-    warn "OPENAPI_API_KEY no está definida; la llamada al LLM fallará."
+  if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+    warn "OPENAI_API_KEY no está definida; la llamada al LLM fallará."
   fi
 
   log "Ejecutando análisis LLM con llm_analyzer…"
+  log "Modelo: $OPENAI_MODEL"
   "$PY" - <<PY
 import json, os, sys
 from llm_analyzer import resumir_cves, consultar_llm
@@ -205,7 +206,14 @@ if [[ "$DO_LLM_STREAM" == "true" ]]; then
     err "--llm-stream requiere el JSON en: $OUT_JSON (usa --scan antes)"
     exit 1
   fi
+  if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+    err "OPENAI_API_KEY no está definida; la llamada al LLM fallará."
+    exit 1
+  fi
+  log "Modelo: $OPENAI_MODEL"
+  log "CVES a enviar al LLM (máx $TRIVY_MAX_ITEMS):"
   log "LLM streaming (CLI)…"
+
   "$PY" - <<PY
 import json
 from llm_analyzer import resumir_cves, stream_to_stdout

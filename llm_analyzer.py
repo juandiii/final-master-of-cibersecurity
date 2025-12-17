@@ -7,7 +7,7 @@ from openai import OpenAI, RateLimitError, APIConnectionError, APIStatusError
 # ======================
 # Config
 # ======================
-MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+MODEL_NAME = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 MAX_ITEMS = int(os.getenv("TRIVY_MAX_ITEMS", "50"))     # CVEs máximos al prompt
 STREAM = os.getenv("LLM_STREAM", "false").lower() == "true"
 # MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "900"))
@@ -112,6 +112,7 @@ def _build_messages(resumen_lines: str, metrics: Dict[str, int], language: str =
         "Eres un analista senior de seguridad de contenedores y supply-chain. "
         "Respondes en ESPAÑOL, de forma clara, accionable y sin alucinar. "
         "No inventes CVEs, versiones ni ‘fix versions’. Si un dato falta, escribe 'DESCONOCIDO'. "
+        "No hagas suposiciones."
         "Tu razonamiento debe ser interno; SOLO devuelve el informe final solicitado."
     )
 
@@ -126,13 +127,14 @@ def _build_messages(resumen_lines: str, metrics: Dict[str, int], language: str =
             {resumen_lines}
 
             ## Instrucciones de salida (formato estricto)
-            Entregá 1 sección: primero un informe en Markdown con el plan de acción.
+            Entragarás un informe en Markdown con el plan de acción.
 
             ### 1) Informe
             1. **Resumen ejecutivo.** Qué tan expuesta está la imagen y por qué.
             2. **Top hallazgos (tabla)** con columnas EXACTAS:
             CVE | Paquete | Severidad | Versión instalada | Versión fija | Explotabilidad (baja/media/alta) | Impacto en contenedor (build/runtime) | Acción sugerida
             - Si no hay versión fija, pon 'NO-FIX' y sugiere mitigación.
+            - No faltar datos en la tabla (usa 'DESCONOCIDO' si hace falta).
             3. **Plan de mitigación priorizado** (P0/P1/P2/P3) con horizontes: P0=48h, P1=7d, P2=30d, P3=backlog.
             - Prioriza por: severidad, explotabilidad, exposición (runtime vs build), disponibilidad de fix y facilidad de cambio de base image.
             4. **Hardening**: mínimos privilegios, usuario no-root, fs read-only, drop capabilities, pin de versiones, reducir superficie (multi-stage), escaneo en CI.
@@ -201,13 +203,13 @@ def consultar_llm_stream(resumen_lines: str, metrics: Dict[str, int], on_delta: 
     kwargs = {
     "model": MODEL_NAME,
     "messages": messages,
-    "temperature": 0.3,
+    "temperature": 0.4,
     "stream": True,
     "timeout": timeout
     }
 
     if MAX_TOKENS is not None:
-        kwargs["max_tokens"] = MAX_TOKENS
+        kwargs["max_completion_tokens"] = MAX_TOKENS
     with client.chat.completions.create(**kwargs) as stream:
         for ev in stream:
             delta = ev.choices[0].delta.content or ""
